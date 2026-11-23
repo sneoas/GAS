@@ -88,6 +88,15 @@ Triggers 里确认 4 条 cron 都在。
 wrangler dev --test-scheduled
 ```
 
+## 每日壁纸
+
+页面背景每天换一张，不重样，按北京时间一年中的第几天轮换：
+
+- 01 上海晨光 · 中国开盘、02 伦敦黄昏 · 国际市场、03 银月夜盘 · 国际收盘、04 金银流光 · 抽象
+- 壁纸是 AI 生成的 2048×1152 图片，页面上加了一层浅色渐变遮罩，卡片是半透明白底，文字可读性不受影响
+- 仓库里存的是 base64 文本版（`assets/wallpapers/wallpaper-*.webp.b64`，GitHub 快照推送只支持 UTF-8 文本），Worker 收到 `/wallpapers/<file>` 时现从 GitHub raw 取回解码成图片返回
+- 新增壁纸：生成新图 → 转 base64 存进仓库 → 在 `src/index.js` 的 `WALLPAPERS` 里追加一条，下次请求即生效，不用改页面结构
+
 ## 本地开发
 
 ```bash

@@ -11,6 +11,8 @@ compatibility_date = "2026-11-23"
 binding = "STATION_KV"
 id = "d6004b01801c44bc9116b58b7632f3dd"
 
+# 壁纸：.webp 的 base64 文本版存在 GitHub 仓库 assets/wallpapers/（*.b64），
+# Worker 收到 /wallpapers/<file> 时现取现解码，不用 Workers Assets。
 # 定时触发（UTC 时间，对应北京时间四个时段）
 #   01:05 UTC = 09:05 北京时间 中国开盘
 #   07:35 UTC = 15:35 北京时间 中国收盘

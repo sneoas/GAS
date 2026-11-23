@@ -13,6 +13,27 @@ const SESSIONS = [
 ];
 const SESSION_KEYS = SESSIONS.map((s) => s.key);
 
+// ---------- 每日壁纸 ----------
+// 壁纸是 .webp 图片，GitHub 的 snapshot 推送只支持 UTF-8 文本，
+// 所以仓库里存的是 base64 文本版（assets/wallpapers/<file>.b64），
+// Worker 收到 /wallpapers/<file> 请求时，现从 GitHub raw 取回并解码成图片返回。
+// 按北京时间一年中的第几天轮换，每天一张不重样。
+// 新增壁纸：把 <file>.b64 放进仓库，并在 WALLPAPERS 里追加一条即可。
+const WALLPAPER_BASE = 'https://raw.githubusercontent.com/sneoas/GAS/main/assets/wallpapers/';
+const WALLPAPERS = [
+  { file: 'wallpaper-01.webp', theme: '上海晨光 · 中国开盘' },
+  { file: 'wallpaper-02.webp', theme: '伦敦黄昏 · 国际市场' },
+  { file: 'wallpaper-03.webp', theme: '银月夜盘 · 国际收盘' },
+  { file: 'wallpaper-04.webp', theme: '金银流光 · 抽象' },
+];
+function wallpaperForBeijing(bj) {
+  const start = Date.UTC(bj.getUTCFullYear(), 0, 1);
+  const dayOfYear = Math.floor((Date.UTC(bj.getUTCFullYear(), bj.getUTCMonth(), bj.getUTCDate()) - start) / (24 * 3600 * 1000)) + 1;
+  const idx = (dayOfYear - 1) % WALLPAPERS.length;
+  const next = WALLPAPERS[(idx + 1) % WALLPAPERS.length];
+  return { ...WALLPAPERS[idx], index: idx + 1, total: WALLPAPERS.length, nextTheme: next.theme };
+}
+
 // ---------- 时间（北京时间） ----------
 function beijingNow(date = new Date()) {
   return new Date(date.getTime() + 8 * 3600 * 1000);
@@ -439,7 +460,7 @@ function clientMain() {
 }
 
 function renderPage(data) {
-  const { today, live, day, history, liveOk, bjNow } = data;
+  const { today, live, day, history, liveOk, bjNow, wallpaper } = data;
   const cny = cnyUnits(live.xau_usd, live.xag_usd, live.fx_rate);
   const xauCny = cny.xau_cny_g != null ? cny.xau_cny_g : live.xau_cny_g;
   const xagCny = cny.xag_cny_kg != null ? cny.xag_cny_kg : live.xag_cny_kg;
@@ -466,22 +487,24 @@ function renderPage(data) {
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f7f4ec; color: #26221a; }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 16px; }
+  .bg { position: fixed; inset: 0; z-index: -1; background-size: cover; background-position: center; background-attachment: fixed; }
+  .bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(247,244,236,0.72), rgba(247,244,236,0.88)); }
+  .wrap { position: relative; z-index: 0; max-width: 960px; margin: 0 auto; padding: 16px; }
   header { padding: 8px 4px 4px; }
   h1 { margin: 0; font-size: 26px; }
   h1 span { color: #b8860b; }
   .sub { color: #777; margin: 6px 0 0; font-size: 14px; }
   h2 { font-size: 18px; margin: 26px 0 10px; }
   .live { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
-  .live-box { background: #fff; border: 1px solid #e8e2d2; border-radius: 12px; padding: 16px; }
+  .live-box { background: rgba(255,255,255,0.93); border: 1px solid #e8e2d2; border-radius: 12px; padding: 16px; }
   .live-box.active-metal { border-color: #b8860b; box-shadow: 0 0 0 1px #b8860b inset; }
   .live-box .name { font-size: 15px; color: #666; }
   .live-box .big { font-size: 30px; font-weight: 700; margin: 6px 0 2px; }
   .live-box .big small { font-size: 14px; font-weight: 400; color: #666; }
   .live-box .row { font-size: 14px; color: #444; line-height: 1.7; }
-  .meta { background: #fff; border: 1px solid #e8e2d2; border-radius: 12px; padding: 12px 16px; margin-top: 12px; font-size: 14px; line-height: 1.9; }
+  .meta { background: rgba(255,255,255,0.93); border: 1px solid #e8e2d2; border-radius: 12px; padding: 12px 16px; margin-top: 12px; font-size: 14px; line-height: 1.9; }
   .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-  .card { background: #fff; border: 1px solid #e8e2d2; border-radius: 12px; padding: 14px; }
+  .card { background: rgba(255,255,255,0.93); border: 1px solid #e8e2d2; border-radius: 12px; padding: 14px; }
   .card-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600; }
   .card-time { color: #999; font-size: 13px; margin-top: 2px; }
   .price { font-size: 22px; font-weight: 700; margin-top: 10px; }
@@ -497,8 +520,8 @@ function renderPage(data) {
   .toggle { display: inline-flex; border: 1px solid #ddd; border-radius: 20px; overflow: hidden; margin-left: 8px; vertical-align: middle; }
   .toggle button { border: 0; background: #fff; padding: 5px 14px; font-size: 13px; cursor: pointer; }
   .toggle button.active { background: #b8860b; color: #fff; }
-  canvas { width: 100%; background: #fff; border: 1px solid #e8e2d2; border-radius: 12px; }
-  .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #e8e2d2; border-radius: 12px; }
+  canvas { width: 100%; background: rgba(255,255,255,0.93); border: 1px solid #e8e2d2; border-radius: 12px; }
+  .table-wrap { overflow-x: auto; background: rgba(255,255,255,0.93); border: 1px solid #e8e2d2; border-radius: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid #f0ead9; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; }
@@ -515,6 +538,7 @@ function renderPage(data) {
 </style>
 </head>
 <body>
+<div class="bg" style="background-image:url('/wallpapers/${wallpaper.file}')"></div>
 <div class="wrap">
   <header>
     <h1>金银<span>监控站</span></h1>
@@ -560,6 +584,7 @@ function renderPage(data) {
   ${finenessHTML(latestGold)}
 
   <footer>
+    今日壁纸：${wallpaper.theme}（${wallpaper.index} / ${wallpaper.total}）· 每天更换，明天是「${wallpaper.nextTheme}」。<br>
     人民币价为国际现货按实时汇率折算，非上金所成交价。<br>
     周末 COMEX 休市，无开收盘记录；法定节假日同理。<br>
     实时价来源 gold-api.com；汇率来源 open.er-api.com；ETF 518880 行情来源 Yahoo Finance。<br>
@@ -578,8 +603,25 @@ window.__DATA__ = ${dataJson};
 async function handleFetch(request, env) {
   const url = new URL(request.url);
   if (url.pathname === '/favicon.ico') return new Response(null, { status: 204 });
+  // 壁纸等静态资源：从 GitHub raw 取 base64 文本，解码成图片返回
+  if (url.pathname.startsWith('/wallpapers/')) {
+    const file = url.pathname.slice('/wallpapers/'.length);
+    if (!/^wallpaper-\d+\.webp$/.test(file)) return new Response('Not Found', { status: 404 });
+    try {
+      const r = await fetch(WALLPAPER_BASE + file + '.b64');
+      if (!r.ok) return new Response('Not Found', { status: 404 });
+      const b64 = (await r.text()).replace(/\s/g, '');
+      const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      return new Response(bin, {
+        headers: { 'content-type': 'image/webp', 'cache-control': 'public, max-age=86400' },
+      });
+    } catch (e) {
+      return new Response('Not Found', { status: 404 });
+    }
+  }
   const bj = beijingNow();
   const todayStr = fmtDate(bj);
+  const wallpaper = wallpaperForBeijing(bj);
   const history = (await kvGet(env, 'history')) || [];
   const day = (await kvGet(env, 'sessions:' + todayStr)) || null;
 
@@ -610,7 +652,7 @@ async function handleFetch(request, env) {
       }
     }
   }
-  const html = renderPage({ today: todayStr, live, day, history, liveOk, bjNow: bj });
+  const html = renderPage({ today: todayStr, live, day, history, liveOk, bjNow: bj, wallpaper });
   return new Response(html, {
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
   });
