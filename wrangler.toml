@@ -9,7 +9,7 @@ compatibility_date = "2026-11-23"
 # 把返回的 id 填到下面的 id 字段（不要留空再 deploy，否则会报错）
 [[kv_namespaces]]
 binding = "STATION_KV"
-id = ""
+id = "d6004b01801c44bc9116b58b7632f3dd"
 
 # 定时触发（UTC 时间，对应北京时间四个时段）
 #   01:05 UTC = 09:05 北京时间 中国开盘
