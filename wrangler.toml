@@ -1,0 +1,20 @@
+# 金银监控站 Cloudflare Worker
+name = "jin-yin-jian-kong-zhan"
+main = "src/index.js"
+compatibility_date = "2026-11-23"
+
+# KV 绑定：历史记录和每日四时段都存在这里
+# 部署前先创建 namespace：
+#   wrangler kv namespace create STATION_KV
+# 把返回的 id 填到下面的 id 字段（不要留空再 deploy，否则会报错）
+[[kv_namespaces]]
+binding = "STATION_KV"
+id = ""
+
+# 定时触发（UTC 时间，对应北京时间四个时段）
+#   01:05 UTC = 09:05 北京时间 中国开盘
+#   07:35 UTC = 15:35 北京时间 中国收盘
+#   13:35 UTC = 21:35 北京时间 国际开盘
+#   18:35 UTC = 02:35 北京时间（次日）国际收盘
+[triggers]
+crons = ["5 1 * * *", "35 7 * * *", "35 13 * * *", "35 18 * * *"]
