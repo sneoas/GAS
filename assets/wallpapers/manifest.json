@@ -1,1 +1,46 @@
-{"note":"壁纸按北京时间日期轮换：index = (一年中的第几天 - 1) % wallpapers.length，每天一张，不重样。新增壁纸只需把文件放进本目录并追加到列表，Worker 下次请求即生效，无需改代码。","version":1,"wallpapers":[{"desc":"金色晨光下的上海天际线，前景是虚化的金条","file":"wallpaper-01.webp","theme":"上海晨光 · 中国开盘"},{"desc":"伦敦金融城黄昏，金银条与金币，冷暖交织","file":"wallpaper-02.webp","theme":"伦敦黄昏 · 国际市场"},{"desc":"银色满月下的夜盘交易大厅，银条成排","file":"wallpaper-03.webp","theme":"银月夜盘 · 国际收盘"},{"desc":"流动的金银金属丝带，深色高级抽象","file":"wallpaper-04.webp","theme":"金银流光 · 抽象"}]}
+{
+  "note": "壁纸按北京时间日期轮换：index = (一年中的第几天 - 1) % wallpapers.length，每天一张，不重样。新增壁纸只需把文件放进本目录并追加到列表，Worker 下次请求即生效，无需改代码。",
+  "version": 2,
+  "wallpapers": [
+    {
+      "desc": "金色晨光下的上海天际线，前景是虚化的金条",
+      "file": "wallpaper-01.webp",
+      "theme": "上海晨光 · 中国开盘"
+    },
+    {
+      "desc": "伦敦金融城黄昏，金银条与金币，冷暖交织",
+      "file": "wallpaper-02.webp",
+      "theme": "伦敦黄昏 · 国际市场"
+    },
+    {
+      "desc": "银色满月下的夜盘交易大厅，银条成排",
+      "file": "wallpaper-03.webp",
+      "theme": "银月夜盘 · 国际收盘"
+    },
+    {
+      "desc": "流动的金银金属丝带，深色高级抽象",
+      "file": "wallpaper-04.webp",
+      "theme": "金银流光 · 抽象"
+    },
+    {
+      "desc": "纽约华尔街清晨金色，前景虚化的金条",
+      "file": "wallpaper-05.webp",
+      "theme": "纽约晨光 · 华尔街"
+    },
+    {
+      "desc": "故宫金色琉璃瓦日落",
+      "file": "wallpaper-06.webp",
+      "theme": "故宫金瓦 · 日落"
+    },
+    {
+      "desc": "雪山银白黎明，雪峰泛金光",
+      "file": "wallpaper-07.webp",
+      "theme": "雪山银白 · 黎明"
+    },
+    {
+      "desc": "沙漠金色沙丘黄昏，金条半埋沙中",
+      "file": "wallpaper-08.webp",
+      "theme": "沙漠流金 · 黄昏"
+    }
+  ]
+}
