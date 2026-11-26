@@ -2,6 +2,7 @@
 //   GET /         服务端渲染：KV 历史 + 实时现货价，打开即最新
 //   GET /data.json JSON 数据（调试用）
 //   scheduled     定时抓价写入 KV（每天四次，北京时间）
+//   深圳水贝     每天 09:05 / 15:35 各抓一次水贝快照（shuibei.js），只在当日时段价记好之后抓，抓不到就跳过
 
 const OZ_G = 31.1035; // 1 金衡盎司 = 31.1035 克
 
@@ -122,6 +123,108 @@ function cnyUnits(xau_usd, xag_usd, fx) {
   };
 }
 
+// ---------- 深圳水贝 ----------
+// 来源：金价查询网数据文件 res.huangjinjiage.com.cn/shuibei.js（const shuipei = {...}，
+// 约 1–2 分钟一更）。水贝无统一官方价，这是商户参考价，各店略有浮动，
+// 所以固定一个来源 + 固定抓取时间（每天 09:05、15:35），不要多源混用。
+// 注意：该文件 Cache-Control: max-age=43200，必须带 ?t= 时间戳防缓存。
+// 固定页 golden/121169.html、quote/114636.html 是数小时前的旧快照，不要用。
+const SHUIBEI_URL = 'https://res.huangjinjiage.com.cn/shuibei.js';
+const SHUIBEI_SOURCE = 'res.huangjinjiage.com.cn/shuibei.js';
+const SHUIBEI_ITEMS = [
+  { key: 'au_ask', label: '首饰金' },
+  { key: 'au1_ask', label: '会员金条' },
+  { key: 'au3_ask', label: '非会员投资金' },
+  { key: 'au9999_ask', label: '黄金 9999' },
+  { key: 'ag_ask', label: '白银挂牌' },
+  { key: 'pt_ask', label: '铂金' },
+  { key: 'pd_ask', label: '钯金' },
+  { key: 'au_bid', label: '回收参考' },
+];
+
+async function fetchShuibei() {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const r = await fetch(SHUIBEI_URL + '?t=' + Date.now(), { signal: ctrl.signal });
+    if (!r.ok) throw new Error('shuibei.js -> HTTP ' + r.status);
+    const text = await r.text();
+    const json = text.replace(/^\s*const\s+shuipei\s*=\s*/, '').replace(/;\s*$/, '');
+    const d = JSON.parse(json);
+    const pick = (code) => {
+      const v = d[code];
+      if (!v) return null;
+      return {
+        ask: typeof v.askPrice === 'number' ? v.askPrice : null,
+        bid: typeof v.bidPrice === 'number' ? v.bidPrice : null,
+      };
+    };
+    const au = pick('XDL_Au');
+    const au1 = pick('XDL_Au_1');
+    const au2 = pick('XDL_Au_2');
+    const au3 = pick('XDL_Au_3');
+    const au9999 = pick('XDL_Au9999');
+    const ag = pick('XDL_Ag');
+    const pt = pick('XDL_Pt');
+    const pd = pick('XDL_Pd');
+    if (!au || au.ask == null || !au1 || au1.ask == null || !ag || ag.ask == null) {
+      throw new Error('shuibei.js fields missing');
+    }
+    return {
+      source_time: au && typeof d.XDL_Au.time === 'string' ? d.XDL_Au.time : null,
+      au_ask: au.ask,
+      au_bid: au.bid,
+      au1_ask: au1.ask,
+      au2_ask: au2 ? au2.ask : null,
+      au3_ask: au3 ? au3.ask : null,
+      au9999_ask: au9999 ? au9999.ask : null,
+      au9999_bid: au9999 ? au9999.bid : null,
+      ag_ask: ag.ask,
+      ag_bid: ag.bid,
+      pt_ask: pt ? pt.ask : null,
+      pt_bid: pt ? pt.bid : null,
+      pd_ask: pd ? pd.ask : null,
+      pd_bid: pd ? pd.bid : null,
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// 抓一次水贝快照并写入 KV。只在 09:05 / 15:35 的定时触发后调用，
+// 且一定在当日时段价记好之后调用；抓不到就跳过，绝不影响时段记价。
+async function recordShuibei(env, tradeDate, slot) {
+  try {
+    const dayKey = 'shuibei:' + tradeDate;
+    const day = (await kvGet(env, dayKey)) || { trade_date: tradeDate, open: null, close: null };
+    if (day[slot]) {
+      console.log('shuibei: already recorded', tradeDate, slot);
+      return;
+    }
+    const snap = await fetchShuibei();
+    const rec = {
+      trade_date: tradeDate,
+      slot,
+      fetched_at: new Date().toISOString(),
+      source: SHUIBEI_SOURCE,
+      ...snap,
+    };
+    day[slot] = rec;
+    await kvPut(env, dayKey, day);
+    const hist = (await kvGet(env, 'shuibei_history')) || [];
+    if (!hist.some((r) => r.trade_date === tradeDate && r.slot === slot)) hist.push(rec);
+    hist.sort((a, b) => {
+      if (a.trade_date !== b.trade_date) return a.trade_date < b.trade_date ? 1 : -1;
+      return (b.slot === 'close' ? 1 : 0) - (a.slot === 'close' ? 1 : 0);
+    });
+    const cutoff = fmtDate(new Date(beijingNow().getTime() - 30 * 24 * 3600 * 1000));
+    await kvPut(env, 'shuibei_history', hist.filter((r) => r.trade_date >= cutoff).slice(0, 120));
+    console.log('shuibei: recorded', tradeDate, slot, rec.au_ask, rec.ag_ask);
+  } catch (e) {
+    console.log('shuibei: fetch failed, skipped', tradeDate, slot, e && e.message);
+  }
+}
+
 // ---------- KV ----------
 async function kvGet(env, key) {
   try {
@@ -145,10 +248,12 @@ async function handleScheduled(event, env) {
     return;
   }
   const { session, tradeDate } = info;
-  // 周末 COMEX 休市，不记录
+  const shuibeiSlot = session === 'domestic_open' ? 'open' : session === 'domestic_close' ? 'close' : null;
+  // 水贝是零售市场，周末也营业：09:05 / 15:35 照常抓，不受 COMEX 休市影响
   const wd = new Date(tradeDate + 'T00:00:00Z').getUTCDay();
   if (wd === 0 || wd === 6) {
-    console.log('scheduled: weekend trade_date, skip', tradeDate);
+    console.log('scheduled: weekend trade_date, skip session', tradeDate);
+    if (shuibeiSlot) await recordShuibei(env, tradeDate, shuibeiSlot);
     return;
   }
   const dayKey = 'sessions:' + tradeDate;
@@ -157,6 +262,7 @@ async function handleScheduled(event, env) {
     { trade_date: tradeDate, domestic_open: null, domestic_close: null, intl_open: null, intl_close: null };
   if (day[session]) {
     console.log('scheduled: already recorded', tradeDate, session);
+    if (shuibeiSlot) await recordShuibei(env, tradeDate, shuibeiSlot);
     return;
   }
   const live = await fetchLive();
@@ -193,6 +299,8 @@ async function handleScheduled(event, env) {
   const pruned = history.filter((r) => r.trade_date >= cutoff).slice(0, 200);
   await kvPut(env, 'history', pruned);
   console.log('scheduled: recorded', tradeDate, session, rec.xau_usd, rec.xag_usd);
+  // 时段价记好之后再抓水贝，抓不到就跳过，不影响时段记价
+  if (shuibeiSlot) await recordShuibei(env, tradeDate, shuibeiSlot);
 }
 
 // ---------- 渲染 ----------
@@ -300,6 +408,34 @@ function finenessHTML(xauCnyG) {
     .join('');
   return `<section><h2>成品金成色折算</h2><p class="note">按最新黄金价 ¥${num(xauCnyG)} / 克折算，仅供参考。</p>
     <div class="table-wrap"><table><thead><tr><th>成色</th><th>折算价</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+function shuibeiHTML(shuibei) {
+  const day = shuibei && shuibei.trade_date ? shuibei : null;
+  const slots = day ? [day.open, day.close].filter(Boolean) : [];
+  let body;
+  if (slots.length === 0) {
+    body = '<p class="empty-note">今日暂无快照，首笔在 09:05 记录。</p>';
+  } else {
+    const rows = SHUIBEI_ITEMS.map((it) => {
+      const cells = ['open', 'close']
+        .map((slot) => {
+          const s = day[slot];
+          return `<td>${s && s[it.key] != null ? num(s[it.key]) : '--'}</td>`;
+        })
+        .join('');
+      return `<tr><td>${it.label}</td>${cells}</tr>`;
+    }).join('');
+    const times = slots
+      .map(
+        (s) =>
+          `${s.slot === 'open' ? '早盘 09:05' : '午后 15:35'}（数据时间 ${s.source_time || '--'}，抓取于 ${fmtTime(s.fetched_at)}）`,
+      )
+      .join('；');
+    body = `<div class="table-wrap"><table><thead><tr><th>品种（元/克）</th><th>早盘 09:05</th><th>午后 15:35</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">${times}。来源：${SHUIBEI_SOURCE}。水贝无统一官方价，各店价格不同，仅供参考。</p>`;
+  }
+  return `<section><h2>深圳水贝 · ${day ? day.trade_date : ''}</h2>${body}</section>`;
 }
 
 // 浏览器端脚本：金银切换 + 走势图（函数序列化进页面，避免模板嵌套转义问题）
@@ -466,7 +602,7 @@ function clientMain() {
 }
 
 function renderPage(data) {
-  const { today, live, day, history, liveOk, bjNow, wallpaper } = data;
+  const { today, live, day, history, liveOk, bjNow, wallpaper, shuibei } = data;
   const cny = cnyUnits(live.xau_usd, live.xag_usd, live.fx_rate);
   const xauCny = cny.xau_cny_g != null ? cny.xau_cny_g : live.xau_cny_g;
   const xagCny = cny.xag_cny_kg != null ? cny.xag_cny_kg : live.xag_cny_kg;
@@ -575,6 +711,8 @@ function renderPage(data) {
     <div class="board" id="board">${sessionCardHTML(day, history, 'gold', bjNow)}</div>
   </section>
 
+  ${shuibeiHTML(shuibei)}
+
   <section>
     <h2><span id="chart-title">近 30 天走势 · 黄金（元/克）</span>
       <span class="toggle"><button data-metal="gold" class="active">黄金</button><button data-metal="silver">白银</button></span>
@@ -630,12 +768,14 @@ async function handleFetch(request, env) {
   const wallpaper = wallpaperForBeijing(bj);
   const history = (await kvGet(env, 'history')) || [];
   const day = (await kvGet(env, 'sessions:' + todayStr)) || null;
+  const shuibei = (await kvGet(env, 'shuibei:' + todayStr)) || null;
 
   if (url.pathname === '/data.json') {
     const live = await fetchLive();
     const cny = cnyUnits(live.xau_usd, live.xag_usd, live.fx_rate);
+    const shuibeiHistory = (await kvGet(env, 'shuibei_history')) || [];
     return new Response(
-      JSON.stringify({ today: todayStr, live: { ...live, ...cny }, sessions: day, history }),
+      JSON.stringify({ today: todayStr, live: { ...live, ...cny }, sessions: day, history, shuibei, shuibei_history: shuibeiHistory.slice(0, 14) }),
       { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } },
     );
   }
@@ -658,7 +798,7 @@ async function handleFetch(request, env) {
       }
     }
   }
-  const html = renderPage({ today: todayStr, live, day, history, liveOk, bjNow: bj, wallpaper });
+  const html = renderPage({ today: todayStr, live, day, history, liveOk, bjNow: bj, wallpaper, shuibei });
   return new Response(html, {
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
   });
