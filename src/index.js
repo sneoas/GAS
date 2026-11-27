@@ -32,6 +32,7 @@ const WALLPAPERS = [
   { file: 'wallpaper-08.webp', theme: '沙漠流金 · 黄昏' },
   { file: 'wallpaper-09.webp', theme: '迪拜金市 · 午后' },
   { file: 'wallpaper-10.webp', theme: '金阁晨光 · 京都' },
+  { file: 'wallpaper-11.webp', theme: '威尼斯金色黄昏 · 运河' },
 ];
 function wallpaperForBeijing(bj) {
   const start = Date.UTC(bj.getUTCFullYear(), 0, 1);
